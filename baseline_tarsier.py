@@ -57,10 +57,10 @@ def answer_qs(show_name, season, episode, model, processor, ep_qs):
     vid_subpath = f'tvqa/{show_name}/season_{season}/episode_{episode}'
     scene_text = '[SCENE_BREAK]'.join(get_texts('ours', vid_subpath))[-ARGS.prompt_prefix:]
 
-    image_dir = f'../amazon_video/data/ffmpeg-keyframes/{vid_subpath}'
+    image_dir = join(ARGS.kf_dir_prefix, 'ffmpeg-keyframes', vid_subpath)
     image_paths = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith('.jpg')])
     image_paths = image_paths[::len(image_paths) // ARGS.num_frames][:ARGS.num_frames]
-    images = [ToTensor()(np.array(Image.open(fp))).half().to(model.device) for fp in image_paths]
+    #images = [ToTensor()(np.array(Image.open(fp))).half().to(model.device) for fp in image_paths]
 
     n_correct = 0
     for qdict in ep_qs['questions']:
@@ -97,6 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-frames', type=int, default=8)
     parser.add_argument('--prompt-prefix', type=int, default=5000)
     parser.add_argument('--rag-caches-prefix', type=str, default='.')
+    parser.add_argument('--kf-dir-prefix', type=str, default='.')
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--max-new-tokens', type=int, default=256)
     parser.add_argument('--temperature', type=float, default=0)
