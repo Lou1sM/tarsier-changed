@@ -114,7 +114,7 @@ if __name__ == '__main__':
     os.makedirs(out_dir:=f'tvqa-results/tarsier2', exist_ok=True)
     showseaseps = get_showseaseps(ARGS.show_name, ARGS.season, ARGS.ep)
 
-    for show_name, seas, ep in tqdm(showseaseps):
+    for show_name, seas, ep in (pbar:=tqdm(showseaseps)):
         if f'episode_{ep}' not in full_dset_qs[show_name_dict[show_name]][f'season_{seas}']:
             continue
         ep_qs = full_dset_qs[show_name_dict[show_name]][f'season_{seas}'][f'episode_{ep}']
@@ -130,6 +130,7 @@ if __name__ == '__main__':
         tot_n_correct += new_correct
         tot += new_tot
         all_scores.append([show_name, seas, ep, new_correct, new_tot, new_correct/new_tot])
+        pbar.set_description(f'{show_name}-s{seas}e{ep}, running avg: {tot_n_correct}/{tot}={tot_n_correct/tot}')
 
     df = pd.DataFrame(all_scores, columns=['show', 'season', 'episode', 'n_correct', 'n', 'acc'])
     df.to_csv(f'{out_dir}/{ARGS.show_name}_{ARGS.season}-tvqa-results.csv', index=False)
