@@ -118,7 +118,15 @@ if __name__ == '__main__':
         if f'episode_{ep}' not in full_dset_qs[show_name_dict[show_name]][f'season_{seas}']:
             continue
         ep_qs = full_dset_qs[show_name_dict[show_name]][f'season_{seas}'][f'episode_{ep}']
-        new_correct, new_tot = answer_qs(show_name, seas, ep, model, processor, ep_qs)
+        cache_fp = os.path.join(out_dir, f'{show_name}_s{seas:01}e{ep:01}.json')
+        if os.path.exists(cache_fp) and not ARGS.recompute:
+            with open(cache_fp) as f:
+                x = f.read().split()
+            new_correct, new_tot = int(x[0]), int(x[1])
+        else:
+            new_correct, new_tot = answer_qs(show_name, seas, ep, model, processor, ep_qs)
+            with open(cache_fp, 'w') as f:
+                f.write(f'{new_correct} {new_tot}')
         tot_n_correct += new_correct
         tot += new_tot
         all_scores.append([show_name, seas, ep, new_correct, new_tot, new_correct/new_tot])
