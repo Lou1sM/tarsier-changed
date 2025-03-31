@@ -371,7 +371,7 @@ class VisionRotaryEmbedding(nn.Module):
         seq = torch.arange(seqlen, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
         freqs = torch.outer(seq, self.inv_freq)
         return freqs
-    
+
 class PatchEmbed(nn.Module):
     def __init__(
         self,
@@ -412,7 +412,7 @@ class PatchMerger(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.mlp(self.ln_q(x).view(-1, self.hidden_size))
         return x
-    
+
 class VisionMlp(nn.Module):
     def __init__(self, dim: int, hidden_dim: int, hidden_act: str) -> None:
         super().__init__()
@@ -527,7 +527,7 @@ class Qwen2VLPreTrainedModel(PreTrainedModel):
             module.weight.data.normal_(mean=0.0, std=std)
             if module.padding_idx is not None:
                 module.weight.data[module.padding_idx].zero_()
-    
+
 class Qwen2VisionTransformerPretrainedModel(Qwen2VLPreTrainedModel):
     config_class = Qwen2VLVisionConfig
     _no_split_modules = ["Qwen2VLVisionBlock"]
@@ -648,7 +648,7 @@ class Qwen2RMSNorm(nn.Module):
 
     def extra_repr(self):
         return f"{tuple(self.weight.shape)}, eps={self.variance_epsilon}"
-    
+
 class Qwen2VLRotaryEmbedding(nn.Module):
     def __init__(
         self,
@@ -832,7 +832,7 @@ class Qwen2VLFlashAttention2(Qwen2VLAttention):
         cu_seqlens: Optional[torch.Tensor] = False,
     ):
         """
-        Train: 
+        Train:
           unpad: (bsz, q_len) = (1, acc_seqlen)
           pad: (bsz, q_len) = (bsz, q_len)
         Test:
@@ -895,8 +895,8 @@ class Qwen2VLFlashAttention2(Qwen2VLAttention):
         if use_rmpad:
             max_seqlen = torch.max(cu_seqlens[1:] - cu_seqlens[:-1]).item()
             attn_output = flash_attn_varlen_func(
-                query_states.squeeze(0), key_states.squeeze(0), value_states.squeeze(0), 
-                cu_seqlens_q=cu_seqlens, cu_seqlens_k=cu_seqlens, 
+                query_states.squeeze(0), key_states.squeeze(0), value_states.squeeze(0),
+                cu_seqlens_q=cu_seqlens, cu_seqlens_k=cu_seqlens,
                 max_seqlen_q=max_seqlen, max_seqlen_k=max_seqlen,
                 dropout_p=dropout_rate,
                 causal=self.is_causal, window_size=(-1, -1),
@@ -922,6 +922,7 @@ class Qwen2VLFlashAttention2(Qwen2VLAttention):
 
 QWEN2_VL_ATTENTION_CLASSES = {
     "flash_attention_2": Qwen2VLFlashAttention2,
+    "eager": torch.nn.MultiheadAttention, # added Louis
 }
 
 class Qwen2VLDecoderLayer(nn.Module):
@@ -934,6 +935,7 @@ class Qwen2VLDecoderLayer(nn.Module):
                 f"只支持 flash_attention_2！config.attn_implementation={config.attn_implementation}"
             )
         self.self_attn = QWEN2_VL_ATTENTION_CLASSES[config.attn_implementation](config, layer_idx)
+        #self.self_attn = torch.nn.MultiheadAttention(embed_dim=config.hidden_size, num_heads=config.num_attention_heads)
 
         self.mlp = Qwen2MLP(config)
         self.input_layernorm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -990,6 +992,11 @@ class Qwen2VLDecoderLayer(nn.Module):
             use_rmpad=use_rmpad,
             cu_seqlens=cu_seqlens,
         )
+        #device = next(self.self_attn.parameters()).device
+        #hidden_states = hidden_states.to(device)
+        #self_attn_output, self_attn_weights = self.self_attn(hidden_states, hidden_states, hidden_states, attn_mask=attention_mask.bool() if attention_mask is not None else None, need_weights=output_attentions)
+        #present_key_value = None
+        #hidden_states = self_attn_output
         hidden_states = residual + hidden_states
 
         # Fully Connected
@@ -1060,7 +1067,7 @@ class Qwen2VLModel(Qwen2VLPreTrainedModel):
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
-        
+
 
         hidden_states = inputs_embeds
 
@@ -1126,7 +1133,7 @@ class Qwen2VLModel(Qwen2VLPreTrainedModel):
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
-    
+
 class Qwen2VLForCausalLM(Qwen2VLPreTrainedModel, GenerationMixin):
     _tied_weights_keys = ["lm_head.weight"]
 
@@ -1239,7 +1246,7 @@ class Qwen2VLForCausalLM(Qwen2VLPreTrainedModel, GenerationMixin):
                 vision_index += 1
                 remain_vision_num -= 1
                 ed = ed_vision
-                
+
                 llm_grid_t, llm_grid_h, llm_grid_w = (
                     t.item(),
                     h.item() // spatial_merge_size,
@@ -1317,4 +1324,4 @@ class Qwen2VLForCausalLM(Qwen2VLPreTrainedModel, GenerationMixin):
             attentions=outputs.attentions,
         )
 
-    
+

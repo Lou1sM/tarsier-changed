@@ -63,10 +63,10 @@ class LlavaConfig(PretrainedConfig):
                 config_class = get_class_from_dynamic_module(class_ref, repo_id, **kwargs)
                 self.vision_config = config_class(**vision_config)
             elif vision_config["model_type"] in CONFIG_MAPPING:
-                self.vision_config = CONFIG_MAPPING[vision_config["model_type"]](**vision_config)                
+                self.vision_config = CONFIG_MAPPING[vision_config["model_type"]](**vision_config)
             else:
                 raise ValueError(f'vision_config["model_type"] = {vision_config["model_type"]} not supported!')
-        
+
         self.text_config = text_config
 
         if isinstance(self.text_config, dict):
@@ -79,9 +79,14 @@ class LlavaConfig(PretrainedConfig):
                 self.text_config = CONFIG_MAPPING[text_config["model_type"]](**text_config)
             else:
                 raise ValueError(f'text_config["model_type"] = {text_config["model_type"]} not supported!')
-            
 
+
+        #if self.vision_config is not None:
+        #    self.vision_config.attn_implementation = 'eager'
+        #if self.text_config is not None:
+        #    self.text_config.attn_implementation = 'eager'
         super().__init__(**kwargs)
+
 
 
 
@@ -95,7 +100,7 @@ class LlavaCausalLMOutputWithPast(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
     position_ids: Optional[torch.LongTensor] = None
-    
+
 def add_split_tokens(image_features, image_newline_embed, image_new_embed):
     num_images, num_image_patches, embed_dim = image_features.shape
     num_height_patches, num_width_patches = int(math.sqrt(num_image_patches)), int(math.sqrt(num_image_patches))
@@ -131,7 +136,7 @@ class LlavaMultiModalProjector(nn.Module):
         image_new_idx = torch.tensor([config.image_new_idx], dtype=torch.long)
         self.register_buffer('image_newline_idx', image_newline_idx, persistent=False)
         self.register_buffer('image_new_idx', image_new_idx, persistent=False)
-        
+
 
     def forward(self, image_features, input_embeddings):
 
@@ -175,7 +180,7 @@ class PixelShuffleMultiModalProjector(nn.Module):
         image_new_idx = torch.tensor([config.image_new_idx], dtype=torch.long)
         self.register_buffer('image_newline_idx', image_newline_idx, persistent=False)
         self.register_buffer('image_new_idx', image_new_idx, persistent=False)
-    
+
     def forward(self, image_features, input_embeddings):
         selected_image_feature = image_features[self.config.vision_feature_layer]
 
@@ -187,10 +192,10 @@ class PixelShuffleMultiModalProjector(nn.Module):
             raise ValueError(
                 f"Unexpected select feature strategy: {self.config.vision_feature_select_strategy}"
             )
-        
+
         image_features = self.pixel_shuffle(selected_image_feature)
         hidden_states = self.mlp(image_features)
-        
+
         image_newline_embed = input_embeddings(self.image_newline_idx).squeeze()
         image_new_embed = input_embeddings(self.image_new_idx).squeeze()
         hidden_states = add_split_tokens(hidden_states, image_newline_embed, image_new_embed)
@@ -215,7 +220,7 @@ class PixelShuffleMultiModalProjector(nn.Module):
         x = x.permute(0, 2, 1, 3).contiguous()
         x = x.view(x.shape[0], -1, x.shape[-1])
         return x
-        
+
 
 LLAVA_START_DOCSTRING = r"""
     This model inherits from [`PreTrainedModel`]. Check the superclass documentation for the generic methods the
@@ -238,7 +243,8 @@ class TarsierPreTrainedModel(PreTrainedModel):
     base_model_prefix = "llm"
     supports_gradient_checkpointing = True # TODO: support latest gc
     _skip_keys_device_placement = "past_key_values"
-    _supports_flash_attn_2 = True
+    #_supports_flash_attn_2 = True
+    _supports_flash_attn_2 = False
     _supports_sdpa = False
     _supports_cache_class = True # TODO: support different cache
     _supports_static_cache = True
@@ -267,7 +273,7 @@ class TarsierPreTrainedModel(PreTrainedModel):
                 module.bias.data.zero_()
     @property
     def _no_split_modules(self):
-        return self.language_model._no_split_modules + self.vision_tower._no_split_modules 
+        return self.language_model._no_split_modules + self.vision_tower._no_split_modules
 
 
 class TarsierForConditionalGeneration(TarsierPreTrainedModel, GenerationMixin):
@@ -340,17 +346,17 @@ class TarsierForConditionalGeneration(TarsierPreTrainedModel, GenerationMixin):
         use_rmpad: Optional[bool] = False,
         **kwargs,
     ) -> Union[Tuple, LlavaCausalLMOutputWithPast]:
-        
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-       
-        
+
+
         if input_ids is None:
             raise ValueError("You must specify input_ids")
-        
+
         bsz, max_seq_len = input_ids.shape[0], input_ids.shape[1]
 
         if max_seq_len > 1:
@@ -363,8 +369,8 @@ class TarsierForConditionalGeneration(TarsierPreTrainedModel, GenerationMixin):
             else:
                 position_ids = attention_mask.long().cumsum(-1) - 1 #  # [bsz, seqlen]
                 position_ids.masked_fill_(attention_mask == 0, 1)
-        
-        
+
+
         if use_rmpad:
             input_ids, input_ids_indices, cu_seqlens, _ = _unpad_input(input_ids, attention_mask) # [bsz, seqlen] -> [1, seqlen]
             position_ids, _, _, _ = _unpad_input(position_ids, attention_mask)
@@ -373,7 +379,7 @@ class TarsierForConditionalGeneration(TarsierPreTrainedModel, GenerationMixin):
             input_ids_indices, cu_seqlens = None, None
 
         inputs_embeds = self.get_input_embeddings()(input_ids) # [1, seqlen, dim]
-        
+
         image_features = None
         if pixel_values is not None: # training / first step in generation
             if 'Qwen2VLForCausalLM' in self.language_model.__class__.__name__:
